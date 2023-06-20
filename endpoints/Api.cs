@@ -25,7 +25,9 @@ public static class ApiEndpoints
 
     public static WebApplication MapBoardsEndpoints(this WebApplication app)
     {
-        app.MapGet("/boards/{id}", GetBoardById);
+        app.MapGet("/boards/{id}", GetBoard);
+
+        app.MapDelete("/boards/{id}", DeleteBoard);
 
         app.MapPost("/boards", PostBoard);
 
@@ -99,14 +101,36 @@ public static class ApiEndpoints
         };
         var update = Builders<Board>.Update.Push("sections.$[section].tickets", ticket);
         var res = await coll.FindOneAndUpdateAsync(filter, update, options);
-        return TypedResults.Ok(res);
+        return TypedResults.Ok(new {tickets=res.Sections.Where(t => t.Title == title)});
     }
-    private static async Task<IResult> GetBoardById(IMongoCollection<Board> coll, string id)
+    private static async Task<IResult> GetBoard(IMongoCollection<Board> coll, string id)
     {
+        try 
+        {
+            ObjectId.Parse(id);
+        }
+        catch
+        {
+            return Results.BadRequest(new {msg="Invalid ID"});
+        }
         var filter = Builders<Board>.Filter.Eq(board => board.Id, id);
         var res = await coll.Find(filter).ToListAsync();
         if (res.Count == 0) return Results.NotFound(new {msg="Board Not Found"});
         return TypedResults.Ok(new {Board=res[0]});
+    }
+    private static async Task<IResult> DeleteBoard(IMongoCollection<Board> coll, string id)
+    {
+        try 
+        {
+            ObjectId.Parse(id);
+        }
+        catch
+        {
+            return Results.BadRequest(new {msg="Invalid ID"});
+        }
+        var filter = Builders<Board>.Filter.Eq(board => board.Id, id);
+        var res = await coll.FindOneAndDeleteAsync(filter);
+        return res == null ? Results.NoContent() : Results.NotFound(new {msg="Board Not Found"});
     }
     private static async Task<IResult> PostBoard(IMongoCollection<Board> coll, Board newBoard)
     {
