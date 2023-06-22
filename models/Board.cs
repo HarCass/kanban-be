@@ -25,6 +25,10 @@ public class Board
 
 public class Section
 {
+    [BsonId]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string? Id { get; set; } = string.Empty;
+    
     [BsonElement("title")]
     public string Title { get; set; } = string.Empty;
 

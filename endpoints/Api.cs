@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using MongoDB.Bson;
 using Api.Models;
+using Microsoft.VisualBasic;
 
 namespace Api.Endpoints;
 
@@ -19,6 +20,8 @@ public static class ApiEndpoints
         app.MapPost("users/{username}/boards/{name}/sections", PostSection);
 
         app.MapPost("users/{username}/boards/{name}/sections/{title}", PostTicket);
+
+        app.MapDelete("users/{username}/boards/{name}/sections/{title}", DeleteTicket);
 
         return app;
     }
@@ -81,19 +84,25 @@ public static class ApiEndpoints
     {
         Section newSection = new()
         {
+            Id = ObjectId.GenerateNewId().ToString(),
             Title = title
         };
+        var options = new FindOneAndUpdateOptions<Board>
+        {
+            ReturnDocument = ReturnDocument.After
+        };
         var update = Builders<Board>.Update.Push(board => board.Sections, newSection);
-        var res = await coll.FindOneAndUpdateAsync($"{{name: '{name}', creator: '{username}'}}", update);
+        var res = await coll.FindOneAndUpdateAsync($"{{name: '{name}', creator: '{username}'}}", update, options);
         return TypedResults.Ok(new {sections=res.Sections});
     }
     private static async Task<IResult> PostTicket(IMongoCollection<Board> coll, string username, string name, string title, Ticket ticket)
     {
+        ticket.Id = ObjectId.GenerateNewId().ToString();
         var builder = Builders<Board>.Filter;
         var filter = builder.Eq(board => board.Creator, username) & builder.Eq(board => board.Name, name);
         var options = new FindOneAndUpdateOptions<Board>
         {
-            ArrayFilters = new List<ArrayFilterDefinition> 
+            ArrayFilters = new List<ArrayFilterDefinition>
                 {
                     new BsonDocumentArrayFilterDefinition<BsonDocument> (new BsonDocument($"section.title", title)),
                 },
@@ -102,6 +111,23 @@ public static class ApiEndpoints
         var update = Builders<Board>.Update.Push("sections.$[section].tickets", ticket);
         var res = await coll.FindOneAndUpdateAsync(filter, update, options);
         return TypedResults.Ok(new {tickets=res.Sections.Where(t => t.Title == title)});
+    }
+    private static async Task<IResult> DeleteTicket(IMongoCollection<Board> coll, string username, string name, string title, string id)
+    {
+        var _id = ObjectId.Parse(id);
+        var builder = Builders<Board>.Filter;
+        var filter = builder.Eq(board => board.Creator, username) & builder.Eq(board => board.Name, name);
+        var options = new FindOneAndUpdateOptions<Board>
+        {
+            ArrayFilters = new List<ArrayFilterDefinition>
+                {
+                    new BsonDocumentArrayFilterDefinition<BsonDocument> (new BsonDocument($"section.title", title)),
+                    new BsonDocumentArrayFilterDefinition<BsonDocument> (new BsonDocument($"ticket.id", _id))
+                }
+        };
+        var update = Builders<Board>.Update.Pull("sections.$[section].tickets.$[ticket].id", _id);
+        var res = await coll.FindOneAndUpdateAsync(filter, update, options);
+        return res == null ? Results.NotFound(new {msg="Ticket Not Found"}) : Results.NoContent();
     }
     private static async Task<IResult> GetBoard(IMongoCollection<Board> coll, string id)
     {
