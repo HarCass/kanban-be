@@ -20,3 +20,5 @@ app.UseSwaggerUI(config =>
 });
 
 app.Run();
+
+public partial class Program { }
