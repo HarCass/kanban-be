@@ -161,10 +161,15 @@ public static class ApiEndpoints
     private static async Task<IResult> PutBoard(IMongoCollection<Board> coll, string id, Board updatedBoard)
     {
         if (!IsValidId(id)) return Results.BadRequest(new {msg="Invalid Board ID"});
+        updatedBoard.Id = id;
         var builder = Builders<Board>.Filter;
         var filter = builder.Eq(board => board.Id, id);
-        await coll.FindAsync(filter);
-        return Results.Ok();
+        var options = new FindOneAndReplaceOptions<Board>
+        {
+            ReturnDocument = ReturnDocument.After
+        };
+        var res = await coll.FindOneAndReplaceAsync(filter, updatedBoard, options);
+        return res == null ? Results.NotFound(new {msg="Board Not Found"}) : TypedResults.Ok(new {board=res});
     }
 
     private static Boolean IsValidId(string id)
