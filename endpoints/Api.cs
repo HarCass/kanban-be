@@ -42,36 +42,35 @@ public static class ApiEndpoints
     {
         username = username.ToLower();
         var res = await coll.Find($"{{username: '{username}'}}").ToListAsync();
-        return res.Count == 0 ? Results.NotFound(new {msg="User Not Found"}) : TypedResults.Ok(new {user=res[0]});
+        return res.Count == 0 ? Results.NotFound(new {msg="User Not Found"}) : TypedResults.Ok(res[0]);
     }
     private static async Task<IResult> GetUserBoards(IMongoCollection<Board> boards, IMongoCollection<User> users, string username)
     {
         var user = await users.Find($"{{username: '{username}'}}").ToListAsync();
         if (user.Count == 0) return Results.NotFound(new {msg="User Not Found"});
-        return TypedResults.Ok(new {boards=await boards.Find($"{{creator: '{username}'}}").ToListAsync()});
+        var res = await boards.Find($"{{creator: '{username}'}}").ToListAsync();
+        return TypedResults.Ok(res);
     }
-    private static async Task<IResult> PostUser(IMongoCollection<User> coll, User newUser)
+    private static async Task<IResult> PostUser(IMongoCollection<User> coll, NewUser newUser)
     {
-        newUser.Id = "";
-        newUser.Username = newUser.Username.ToLower();
+        if (string.IsNullOrWhiteSpace(newUser.Username) || string.IsNullOrEmpty(newUser.Username)) return Results.BadRequest(new {msg="Invalid Username"});
+        var user = new User {
+            Username = newUser.Username
+        };
         try
         {
-            await coll.InsertOneAsync(newUser);
+            await coll.InsertOneAsync(user);
         }
         catch (MongoWriteException ex)
         {
-            if (ex.WriteError.Code == 121)
-            {
-                return Results.BadRequest(new {msg="Username Required"});
-            }
-            else if (ex.WriteError.Code == 11000)
-            {
-                return Results.BadRequest(new {msg="Username In Use"});
-            }
-            else throw ex;
+            return ex.WriteError.Code switch {
+                121 => Results.BadRequest(new {msg="Username Required"}),
+                11000 => Results.BadRequest(new {msg="Username In Use"}),
+                _ => Results.Problem("Issue Creating User", null, 500, "Internal Server Error")
+            };
         }
         var res = await coll.Find($"{{username: '{newUser.Username}'}}").ToListAsync();
-        return TypedResults.Created("/users", new {user=res[0]});
+        return TypedResults.Created("/users", res[0]);
     }
     private static async Task<IResult> GetBoard(IMongoCollection<Board> coll, string id)
     {
@@ -79,7 +78,7 @@ public static class ApiEndpoints
         var filter = Builders<Board>.Filter.Eq(board => board.Id, id);
         var res = await coll.Find(filter).ToListAsync();
         if (res.Count == 0) return Results.NotFound(new {msg="Board Not Found"});
-        return TypedResults.Ok(new {Board=res[0]});
+        return TypedResults.Ok(res[0]);
     }
     private static async Task<IResult> DeleteBoard(IMongoCollection<Board> coll, string id)
     {
@@ -93,7 +92,7 @@ public static class ApiEndpoints
         newBoard.Id = "";
         await coll.InsertOneAsync(newBoard);
         var res = await coll.Find($"{{name: '{newBoard.Name}', creator: '{newBoard.Creator}'}}").ToListAsync();
-        return TypedResults.Created("/boards", new {board=res[0]});
+        return TypedResults.Created("/boards", res[0]);
     }
     private static async Task<IResult> PostSection(IMongoCollection<Board> coll, string id, string title)
     {
@@ -113,7 +112,7 @@ public static class ApiEndpoints
         var filter = Builders<Board>.Filter.Eq(board => board.Id, id);
         var update = Builders<Board>.Update.Push(board => board.Sections, newSection);
         var res = await coll.FindOneAndUpdateAsync(filter, update, options);
-        return TypedResults.Ok(new {sections=res.Sections});
+        return TypedResults.Ok(res.Sections);
     }
     private static async Task<IResult> DeleteSection(IMongoCollection<Board> coll, string id, string title)
     {
@@ -139,7 +138,7 @@ public static class ApiEndpoints
         };
         var update = Builders<Board>.Update.Push("sections.$[section].tickets", newTicket);
         var res = await coll.FindOneAndUpdateAsync(filter, update, options);
-        return TypedResults.Ok(new {tickets=res.Sections.Where(t => t.Title == title)});
+        return TypedResults.Ok(res.Sections.Where(t => t.Title == title));
     }
     private static async Task<IResult> DeleteTicket(IMongoCollection<Board> coll, string id, string title, string ticketId)
     {
@@ -169,19 +168,11 @@ public static class ApiEndpoints
             ReturnDocument = ReturnDocument.After
         };
         var res = await coll.FindOneAndReplaceAsync(filter, updatedBoard, options);
-        return res == null ? Results.NotFound(new {msg="Board Not Found"}) : TypedResults.Ok(new {board=res});
+        return res == null ? Results.NotFound(new {msg="Board Not Found"}) : TypedResults.Ok(res);
     }
 
-    private static Boolean IsValidId(string id)
+    private static bool IsValidId(string id)
     {
-        try
-        {
-            ObjectId.Parse(id);
-        }
-        catch
-        {
-            return false;
-        }
-        return true;
+        return ObjectId.TryParse(id, out _);
     }
 }

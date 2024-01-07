@@ -13,3 +13,8 @@ public class User
     [BsonElement("username")]
     public string Username { get; set; } = string.Empty;
 }
+
+public class NewUser
+{
+    public string Username { get; set; } = string.Empty;
+}

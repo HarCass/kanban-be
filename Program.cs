@@ -2,7 +2,8 @@ using Api.Services;
 using Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDBClient(Environment.GetEnvironmentVariable("DB_URI"), Environment.GetEnvironmentVariable("DB_NAME"));
+builder.Configuration.AddJsonFile("localsettings.json", false, true);
+builder.Services.AddDBClient(builder.Configuration["DB:URI"], builder.Configuration["DB:Name"]);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var app = builder.Build();
