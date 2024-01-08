@@ -10,8 +10,7 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 
-app.MapBoardsEndpoints();
-app.MapUsersEndpoints();
+app.MapEndpoints();
 
 app.UseSwagger();
 app.UseSwaggerUI(config => 

@@ -6,7 +6,7 @@ namespace Api.Endpoints;
 
 public static class ApiEndpoints
 {
-    public static WebApplication MapUsersEndpoints(this WebApplication app)
+    public static WebApplication MapEndpoints(this WebApplication app)
     {
         app.MapPost("/users", PostUser);
 
@@ -14,11 +14,6 @@ public static class ApiEndpoints
 
         app.MapGet("/users/{username}/boards", GetUserBoards);
 
-        return app;
-    }
-
-    public static WebApplication MapBoardsEndpoints(this WebApplication app)
-    {
         app.MapPost("/boards", PostBoard);
 
         app.MapGet("/boards/{id}", GetBoard);
@@ -53,7 +48,7 @@ public static class ApiEndpoints
     }
     private static async Task<IResult> PostUser(IMongoCollection<User> coll, NewUser newUser)
     {
-        if (string.IsNullOrWhiteSpace(newUser.Username) || string.IsNullOrEmpty(newUser.Username)) return Results.BadRequest(new {msg="Invalid Username"});
+        if (string.IsNullOrWhiteSpace(newUser.Username)) return Results.BadRequest(new {msg="Invalid Username"});
         var user = new User {
             Username = newUser.Username
         };
@@ -90,7 +85,17 @@ public static class ApiEndpoints
     private static async Task<IResult> PostBoard(IMongoCollection<Board> coll, Board newBoard)
     {
         newBoard.Id = "";
-        await coll.InsertOneAsync(newBoard);
+        try
+        {
+            await coll.InsertOneAsync(newBoard);
+        }
+        catch (MongoWriteException ex)
+        {
+            return ex.WriteError.Code switch
+            {
+                _ => Results.Problem("Issue Creating Board", null, 500, "Internal Server Error")
+            };
+        }
         var res = await coll.Find($"{{name: '{newBoard.Name}', creator: '{newBoard.Creator}'}}").ToListAsync();
         return TypedResults.Created("/boards", res[0]);
     }
@@ -111,8 +116,18 @@ public static class ApiEndpoints
 
         var filter = Builders<Board>.Filter.Eq(board => board.Id, id);
         var update = Builders<Board>.Update.Push(board => board.Sections, newSection);
-        var res = await coll.FindOneAndUpdateAsync(filter, update, options);
-        return TypedResults.Ok(res.Sections);
+        try
+        {
+            var res = await coll.FindOneAndUpdateAsync(filter, update, options);
+            return TypedResults.Ok(res.Sections);
+        }
+        catch (MongoWriteException ex)
+        {
+            return ex.WriteError.Code switch
+            {
+                _ => Results.Problem("Issue Creating Board", null, 500, "Internal Server Error")
+            };
+        }
     }
     private static async Task<IResult> DeleteSection(IMongoCollection<Board> coll, string id, string title)
     {
@@ -137,8 +152,18 @@ public static class ApiEndpoints
             ReturnDocument = ReturnDocument.After
         };
         var update = Builders<Board>.Update.Push("sections.$[section].tickets", newTicket);
-        var res = await coll.FindOneAndUpdateAsync(filter, update, options);
-        return TypedResults.Ok(res.Sections.Where(t => t.Title == title));
+        try
+        {
+            var res = await coll.FindOneAndUpdateAsync(filter, update, options);
+            return TypedResults.Ok(res.Sections.Where(t => t.Title == title));
+        }
+        catch (MongoWriteException ex)
+        {
+            return ex.WriteError.Code switch
+            {
+                _ => Results.Problem("Issue Creating Board", null, 500, "Internal Server Error")
+            };
+        }
     }
     private static async Task<IResult> DeleteTicket(IMongoCollection<Board> coll, string id, string title, string ticketId)
     {
