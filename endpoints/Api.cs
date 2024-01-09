@@ -85,14 +85,19 @@ public static class ApiEndpoints
     private static async Task<IResult> PostBoard(IMongoCollection<Board> coll, Board newBoard)
     {
         newBoard.Id = "";
+        newBoard.Sections[0].Id = ObjectId.GenerateNewId().ToString();
+        newBoard.Sections[0].Tickets[0].Id = ObjectId.GenerateNewId().ToString();
+        newBoard.Completed[0].Id = ObjectId.GenerateNewId().ToString();
         try
         {
             await coll.InsertOneAsync(newBoard);
         }
         catch (MongoWriteException ex)
         {
+            Console.WriteLine(ex.WriteError.Message);
             return ex.WriteError.Code switch
             {
+                11000 => Results.BadRequest(new {msg="Board Name Already Exists"}),
                 _ => Results.Problem("Issue Creating Board", null, 500, "Internal Server Error")
             };
         }
